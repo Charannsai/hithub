@@ -114,6 +114,10 @@ app.get("/api/repos/:owner/:repoName/blob", async (req: Request, res: Response) 
     }
 
     const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+    if (!fs.existsSync(repoPath)) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+
     const git = simpleGit(repoPath);
     const content = await git.raw(["show", `${ref}:${filePath}`]);
 
@@ -161,7 +165,24 @@ app.get("/api/repos/:owner/:repoName/branches", async (req: Request, res: Respon
   }
 });
 
-// 6. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
+// 6. Download Repository ZIP Archive
+app.get("/api/repos/:owner/:repoName/zip", (req: Request, res: Response) => {
+  const { owner, repoName } = req.params;
+  const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+
+  if (!fs.existsSync(repoPath)) {
+    return res.status(404).send("Repository not found");
+  }
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${repoName}.zip"`);
+
+  const gitProcess = spawn("git", ["archive", "--format=zip", "HEAD"], { cwd: repoPath });
+  gitProcess.stdout.pipe(res);
+  gitProcess.stderr.on("data", (data) => console.error(`git archive error: ${data}`));
+});
+
+// 7. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
 app.all("/:owner/:repoName.git/info/refs", (req: Request, res: Response) => {
   const service = req.query.service as string;
   if (service !== "git-upload-pack" && service !== "git-receive-pack") {
