@@ -1,58 +1,85 @@
 import React from "react";
 import Link from "next/link";
-import { MessageSquare, Plus, CheckCircle, ThumbsUp, Heart } from "lucide-react";
+import { db } from "@hithub/database";
+import { MessageSquare, Plus } from "lucide-react";
 
-export default function DiscussionsPage() {
+export const revalidate = 0;
+
+export default async function DiscussionsPage({
+  params,
+}: {
+  params: { owner: string; repo: string };
+}) {
+  const { owner, repo } = params;
+
+  let discussions: any[] = [];
+
+  try {
+    const repoData = await db.repository.findFirst({
+      where: { name: repo, owner: { username: owner } },
+    });
+
+    if (repoData) {
+      discussions = await db.discussion.findMany({
+        where: { repoId: repoData.id },
+        include: { author: true },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+  } catch (e) {}
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-[#30363d] pb-4">
-        <div>
-          <h1 className="text-lg font-bold text-white flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-emerald-400" />
-            Community Discussions
-          </h1>
-          <p className="text-xs text-zinc-400">Q&A, feature proposals, announcements, and show-and-tell</p>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-base font-bold text-white flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-[#58a6ff]" />
+          Discussions
+        </h1>
 
-        <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-colors">
-          <Plus className="w-4 h-4" />
+        <button className="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold px-3.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-all">
+          <Plus className="w-3.5 h-3.5" />
           New Discussion
         </button>
       </div>
 
-      <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 space-y-4">
-        <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-xs">
-              <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2.5 py-0.5 rounded-full font-bold">
-                Q&A
-              </span>
-              <h3 className="font-bold text-white text-sm hover:text-emerald-400 cursor-pointer">
-                Welcome to Hithub Community Discussions!
-              </h3>
-            </div>
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30 font-bold flex items-center gap-1">
-              <CheckCircle className="w-3 h-3" /> Answered
-            </span>
+      <div className="bg-[#161b22] border border-[#30363d] rounded-md overflow-hidden divide-y divide-[#30363d]">
+        {discussions.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[#8b949e]">
+            <MessageSquare className="w-8 h-8 text-[#30363d] mx-auto mb-3" />
+            <p className="text-sm font-semibold text-[#c9d1d9] mb-1">
+              No discussions yet.
+            </p>
+            <p>Start a conversation to help grow the community.</p>
           </div>
-
-          <p className="text-xs text-zinc-300">
-            Feel free to post questions, share ideas for new plugins, or showcase what you are building with self-hosted Hithub.
-          </p>
-
-          <div className="flex items-center justify-between text-xs text-zinc-400 border-t border-[#30363d] pt-3">
-            <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center">
-                OC
+        ) : (
+          discussions.map((d: any) => (
+            <div
+              key={d.id}
+              className="px-4 py-3 hover:bg-[#21262d]/50 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <MessageSquare className="w-4 h-4 text-[#3fb950] shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-white hover:text-[#58a6ff] cursor-pointer">
+                      {d.title}
+                    </h3>
+                    <span className="text-[10px] bg-[#21262d] text-[#58a6ff] border border-[#30363d] px-1.5 py-0.5 rounded font-mono">
+                      {d.category}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#8b949e] mt-1 line-clamp-1">
+                    {d.body}
+                  </p>
+                  <div className="text-[11px] text-[#8b949e] mt-1">
+                    Started by <span className="text-[#c9d1d9]">{d.author?.username || "user"}</span>{" "}
+                    on {new Date(d.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
               </div>
-              <span>octocat started 2 hours ago</span>
             </div>
-            <div className="flex items-center space-x-3 text-zinc-400">
-              <span className="flex items-center gap-1"><ThumbsUp className="w-3.5 h-3.5 text-emerald-400" /> 18</span>
-              <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5 text-zinc-400" /> 4 replies</span>
-            </div>
-          </div>
-        </div>
+          ))
+        )}
       </div>
     </div>
   );
