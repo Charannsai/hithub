@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  hithub-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+      - "8022:8022" # Git SSH protocol
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/hithub/storage/hithub.db
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_DRIVER=local
+      - STORAGE_PATH=/hithub/storage
+    volumes:
+      - hithub_data:/hithub/storage
+      - hithub_repos:/hithub/repositories
+    depends_on:
+      - redis
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  hithub_data:
+  hithub_repos:
+  redis_data:
