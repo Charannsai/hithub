@@ -78,7 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* Right Action Icons & "Sign In with GitHub" Button */}
           <div className="flex items-center space-x-3">
             <Link
-              href="https://github.com/login/oauth/authorize"
+              href="/auth/signin"
               className="bg-[#21262d] hover:bg-[#30363d] text-white font-semibold text-xs px-3.5 py-1.5 rounded-md border border-[#30363d] flex items-center gap-2 transition-colors shadow-sm"
             >
               <Github className="w-4 h-4 fill-white" />
