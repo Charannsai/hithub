@@ -30,7 +30,6 @@ export async function POST(req: Request) {
     const headers: Record<string, string> = {
       "User-Agent": "Hithub-Importer",
     };
-    // Use the user's GitHub OAuth token if available, or a provided PAT
     const authToken = token || user.githubToken;
     if (authToken) {
       headers["Authorization"] = `Bearer ${authToken}`;
@@ -46,19 +45,43 @@ export async function POST(req: Request) {
 
     const ghRepo = await ghRes.json();
 
-    // Check for duplicate
+    // Check for duplicate in DB
     const existing = await db.repository.findFirst({
       where: { ownerId: userId, name: destName },
     });
     if (existing) {
-      return NextResponse.json({ error: "Repository with this name already exists" }, { status: 409 });
+      return NextResponse.json(
+        { error: `You already have a repository named '${destName}'` },
+        { status: 409 }
+      );
     }
 
-    // Create real repository in SQLite
+    // 1. Clone full real git repository from GitHub into local Hithub bare storage
+    const remoteUrl = ghRepo.clone_url || `https://github.com/${sourceRepo}.git`;
+    try {
+      const cloneRes = await fetch("http://localhost:8080/api/repos/clone-remote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner: user.username,
+          repoName: destName,
+          remoteUrl,
+          authToken: ghRepo.private ? authToken : undefined,
+        }),
+      });
+
+      if (!cloneRes.ok) {
+        console.warn("Git clone-remote warning:", await cloneRes.text());
+      }
+    } catch (e) {
+      console.warn("Git clone-remote fetch error:", e);
+    }
+
+    // 2. Create real repository in SQLite
     const repo = await db.repository.create({
       data: {
         name: destName,
-        description: ghRepo.description || `Imported from GitHub ${sourceRepo}`,
+        description: ghRepo.description || `Cloned from GitHub ${sourceRepo}`,
         visibility: ghRepo.private ? "PRIVATE" : "PUBLIC",
         starsCount: ghRepo.stargazers_count || 0,
         forksCount: ghRepo.forks_count || 0,
@@ -68,21 +91,10 @@ export async function POST(req: Request) {
       include: { owner: true },
     });
 
-    // Initialize bare git repository via Git Service
-    try {
-      await fetch("http://localhost:8080/api/repos/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner: user.username, repoName: destName }),
-      });
-    } catch (e) {
-      console.warn("Git service init warning:", e);
-    }
-
     return NextResponse.json({
       success: true,
       repo,
-      message: `Successfully imported ${sourceRepo} into Hithub as ${user.username}/${destName}!`,
+      message: `Successfully cloned ${sourceRepo} into Hithub!`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

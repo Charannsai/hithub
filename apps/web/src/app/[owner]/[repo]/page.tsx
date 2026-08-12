@@ -33,15 +33,26 @@ export default async function RepoBrowserPage({
   let fileList: Array<{ name: string; type: string; sha: string }> = [];
   let commitCount = 0;
   let lastCommit: any = null;
+  let readmeData: { name: string; content: string } | null = null;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    const treeRes = await fetch(`http://localhost:8080/api/repos/${owner}/${repo}/tree`, {
-      cache: "no-store",
-      signal: controller.signal,
-    }).catch(() => null);
+    const [treeRes, commitsRes, readmeRes] = await Promise.all([
+      fetch(`http://localhost:8080/api/repos/${owner}/${repo}/tree`, {
+        cache: "no-store",
+        signal: controller.signal,
+      }).catch(() => null),
+      fetch(`http://localhost:8080/api/repos/${owner}/${repo}/commits`, {
+        cache: "no-store",
+        signal: controller.signal,
+      }).catch(() => null),
+      fetch(`http://localhost:8080/api/repos/${owner}/${repo}/readme`, {
+        cache: "no-store",
+        signal: controller.signal,
+      }).catch(() => null),
+    ]);
 
     clearTimeout(timeoutId);
 
@@ -56,11 +67,6 @@ export default async function RepoBrowserPage({
       }
     }
 
-    // Get commit history
-    const commitsRes = await fetch(`http://localhost:8080/api/repos/${owner}/${repo}/commits`, {
-      cache: "no-store",
-    }).catch(() => null);
-
     if (commitsRes && commitsRes.ok) {
       const commitsData = await commitsRes.json();
       if (Array.isArray(commitsData.commits)) {
@@ -68,8 +74,15 @@ export default async function RepoBrowserPage({
         lastCommit = commitsData.commits[0] || null;
       }
     }
+
+    if (readmeRes && readmeRes.ok) {
+      const rData = await readmeRes.json();
+      if (rData && rData.content) {
+        readmeData = rData;
+      }
+    }
   } catch (e) {
-    // Git service may not be running
+    // Git service error handling
   }
 
   // Sort: directories first, then files
@@ -213,28 +226,21 @@ export default async function RepoBrowserPage({
             </div>
           </div>
 
-          {/* README */}
-          <div className="bg-[#161b22] border border-[#30363d] rounded-md overflow-hidden">
-            <div className="bg-[#21262d] px-4 py-2.5 border-b border-[#30363d] flex items-center text-xs">
-              <span className="font-semibold text-[#c9d1d9] flex items-center gap-2">
-                <FileCode className="w-4 h-4 text-[#8b949e]" />
-                README.md
-              </span>
-            </div>
+          {/* Real README Block */}
+          {readmeData && (
+            <div className="bg-[#161b22] border border-[#30363d] rounded-md overflow-hidden">
+              <div className="bg-[#21262d] px-4 py-2.5 border-b border-[#30363d] flex items-center justify-between text-xs">
+                <span className="font-semibold text-[#c9d1d9] flex items-center gap-2">
+                  <FileCode className="w-4 h-4 text-[#8b949e]" />
+                  {readmeData.name}
+                </span>
+              </div>
 
-            <div className="p-6 text-xs text-[#c9d1d9] space-y-4 leading-relaxed">
-              <h1 className="text-xl font-bold text-white border-b border-[#30363d] pb-2">
-                {repo}
-              </h1>
-              {repoData?.description && <p>{repoData.description}</p>}
-              <div className="bg-[#0d1117] border border-[#30363d] p-4 rounded-md font-mono text-xs text-[#c9d1d9] space-y-1">
-                <div className="text-[#8b949e]"># Clone this repository:</div>
-                <div className="text-[#58a6ff]">
-                  git clone http://localhost:8080/{owner}/{repo}.git
-                </div>
+              <div className="p-6 text-sm text-[#c9d1d9] space-y-4 leading-relaxed whitespace-pre-wrap font-sans">
+                {readmeData.content}
               </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>

@@ -62,7 +62,43 @@ app.post("/api/repos/init", async (req: Request, res: Response) => {
   }
 });
 
-// 2. Read Repository Tree & Files
+// 2. Clone a Remote Git Repository into Local Hithub (e.g. from GitHub)
+app.post("/api/repos/clone-remote", async (req: Request, res: Response) => {
+  try {
+    const { owner, repoName, remoteUrl, authToken } = req.body;
+    if (!owner || !repoName || !remoteUrl) {
+      return res.status(400).json({ error: "owner, repoName, and remoteUrl required" });
+    }
+
+    const ownerDir = path.join(REPO_ROOT, owner);
+    if (!fs.existsSync(ownerDir)) {
+      fs.mkdirSync(ownerDir, { recursive: true });
+    }
+
+    const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+    if (fs.existsSync(repoPath)) {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+
+    let authenticatedUrl = remoteUrl;
+    if (authToken && remoteUrl.startsWith("https://github.com/")) {
+      authenticatedUrl = remoteUrl.replace(
+        "https://github.com/",
+        `https://oauth2:${authToken}@github.com/`
+      );
+    }
+
+    const git = simpleGit();
+    await git.clone(authenticatedUrl, repoPath, ["--bare"]);
+
+    res.json({ success: true, repoPath });
+  } catch (error: any) {
+    console.error("Git Clone Remote Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Read Repository Tree & Files
 app.get("/api/repos/:owner/:repoName/tree", async (req: Request, res: Response) => {
   try {
     const { owner, repoName } = req.params;
@@ -102,7 +138,7 @@ app.get("/api/repos/:owner/:repoName/tree", async (req: Request, res: Response) 
   }
 });
 
-// 3. Read File Content
+// 4. Read File Content (Blob)
 app.get("/api/repos/:owner/:repoName/blob", async (req: Request, res: Response) => {
   try {
     const { owner, repoName } = req.params;
@@ -127,7 +163,44 @@ app.get("/api/repos/:owner/:repoName/blob", async (req: Request, res: Response) 
   }
 });
 
-// 4. Read Commit History
+// 5. Read README Content
+app.get("/api/repos/:owner/:repoName/readme", async (req: Request, res: Response) => {
+  try {
+    const { owner, repoName } = req.params;
+    const ref = (req.query.ref as string) || "HEAD";
+    const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+
+    if (!fs.existsSync(repoPath)) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+
+    const git = simpleGit(repoPath);
+    const possibleNames = [
+      "README.md",
+      "readme.md",
+      "README",
+      "Readme.md",
+      "README.markdown",
+      "README.txt",
+      "README.rst",
+    ];
+
+    for (const name of possibleNames) {
+      try {
+        const content = await git.raw(["show", `${ref}:${name}`]);
+        return res.json({ name, content });
+      } catch (e) {
+        // try next file name
+      }
+    }
+
+    res.status(404).json({ error: "README not found" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Read Commit History
 app.get("/api/repos/:owner/:repoName/commits", async (req: Request, res: Response) => {
   try {
     const { owner, repoName } = req.params;
@@ -146,7 +219,7 @@ app.get("/api/repos/:owner/:repoName/commits", async (req: Request, res: Respons
   }
 });
 
-// 5. Read Branches
+// 7. Read Branches
 app.get("/api/repos/:owner/:repoName/branches", async (req: Request, res: Response) => {
   try {
     const { owner, repoName } = req.params;
@@ -165,7 +238,7 @@ app.get("/api/repos/:owner/:repoName/branches", async (req: Request, res: Respon
   }
 });
 
-// 6. Download Repository ZIP Archive
+// 8. Download Repository ZIP Archive
 app.get("/api/repos/:owner/:repoName/zip", (req: Request, res: Response) => {
   const { owner, repoName } = req.params;
   const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
@@ -182,7 +255,7 @@ app.get("/api/repos/:owner/:repoName/zip", (req: Request, res: Response) => {
   gitProcess.stderr.on("data", (data) => console.error(`git archive error: ${data}`));
 });
 
-// 7. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
+// 9. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
 app.all("/:owner/:repoName.git/info/refs", (req: Request, res: Response) => {
   const service = req.query.service as string;
   if (service !== "git-upload-pack" && service !== "git-receive-pack") {
