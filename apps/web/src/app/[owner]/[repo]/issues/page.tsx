@@ -5,6 +5,7 @@ import {
   CircleDot,
   CheckCircle2,
   Plus,
+  MessageSquare,
 } from "lucide-react";
 
 export const revalidate = 0;
@@ -16,45 +17,49 @@ export default async function IssuesPage({
 }) {
   const { owner, repo } = params;
 
-  let repoData = null;
+  let repoData: any = null;
   let issues: any[] = [];
 
   try {
     repoData = await db.repository.findFirst({
-      where: { name: repo },
+      where: { name: repo, owner: { username: owner } },
     });
 
     if (repoData) {
       issues = await db.issue.findMany({
         where: { repoId: repoData.id },
-        include: { author: true, comments: { include: { author: true } } },
+        include: {
+          author: true,
+          labels: { include: { label: true } },
+          comments: true,
+        },
         orderBy: { createdAt: "desc" },
       });
     }
   } catch (e) {
-    // Database safety fallback
+    // Safety fallback
   }
 
-  const openCount = issues.filter((i) => i.state === "OPEN").length;
-  const closedCount = issues.filter((i) => i.state === "CLOSED").length;
+  const openIssues = issues.filter((i) => i.state === "OPEN");
+  const closedIssues = issues.filter((i) => i.state === "CLOSED");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#30363d] pb-4">
-        <div className="flex items-center space-x-3 text-xs font-semibold">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center space-x-2 text-xs font-semibold">
           <button className="bg-[#21262d] text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 border border-[#30363d]">
-            <CircleDot className="w-4 h-4 text-[#3fb950]" />
-            {openCount} Open
+            <CircleDot className="w-3.5 h-3.5 text-[#3fb950]" />
+            {openIssues.length} Open
           </button>
           <button className="text-[#8b949e] hover:text-white px-3 py-1.5 rounded-md flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-[#a371f7]" />
-            {closedCount} Closed
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#a371f7]" />
+            {closedIssues.length} Closed
           </button>
         </div>
 
         <Link
-          href={`/${owner}/${repo}/issues`}
+          href={`/${owner}/${repo}/issues/new`}
           className="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold px-3.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -63,30 +68,78 @@ export default async function IssuesPage({
       </div>
 
       {/* Issues List */}
-      <div className="space-y-3">
+      <div className="bg-[#161b22] border border-[#30363d] rounded-md overflow-hidden divide-y divide-[#30363d]">
         {issues.length === 0 ? (
-          <div className="bg-[#161b22] border border-[#30363d] rounded-md p-8 text-center text-xs text-[#8b949e]">
-            No issues found in database for this repository.
+          <div className="p-8 text-center text-xs text-[#8b949e]">
+            <CircleDot className="w-8 h-8 text-[#30363d] mx-auto mb-3" />
+            <p className="text-sm font-semibold text-[#c9d1d9] mb-1">
+              There aren't any open issues.
+            </p>
+            <p>
+              Want to help improve this project?{" "}
+              <Link
+                href={`/${owner}/${repo}/issues/new`}
+                className="text-[#58a6ff] hover:underline"
+              >
+                Create an issue
+              </Link>.
+            </p>
           </div>
         ) : (
-          issues.map((issue) => (
-            <div key={issue.id} className="bg-[#161b22] border border-[#30363d] rounded-md p-4 space-y-3 hover:border-[#8b949e]/40 transition-colors">
-              <div className="flex items-center space-x-3">
-                <CircleDot className="w-4 h-4 text-[#3fb950] shrink-0" />
-                <h3 className="font-bold text-white text-sm hover:text-[#58a6ff] cursor-pointer">
-                  #{issue.number} {issue.title}
-                </h3>
-              </div>
+          issues.map((issue: any) => (
+            <div
+              key={issue.id}
+              className="px-4 py-3 hover:bg-[#21262d]/50 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                {issue.state === "OPEN" ? (
+                  <CircleDot className="w-4 h-4 text-[#3fb950] shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-[#a371f7] shrink-0 mt-0.5" />
+                )}
 
-              {issue.body && (
-                <p className="text-xs text-[#c9d1d9] bg-[#0d1117] border border-[#30363d] p-3 rounded-md leading-relaxed font-sans">
-                  {issue.body}
-                </p>
-              )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link
+                      href={`/${owner}/${repo}/issues/${issue.number}`}
+                      className="font-bold text-sm text-white hover:text-[#58a6ff] transition-colors"
+                    >
+                      {issue.title}
+                    </Link>
 
-              <div className="flex items-center justify-between text-xs text-[#8b949e] pt-2 border-t border-[#30363d]">
-                <span>Opened by <strong className="text-[#c9d1d9]">{issue.author?.username || "octocat"}</strong> on {new Date(issue.createdAt).toLocaleDateString()}</span>
-                <span>{issue.comments?.length || 0} comments</span>
+                    {/* Labels */}
+                    {issue.labels?.map((il: any) => (
+                      <span
+                        key={il.label.id}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: `${il.label.color}20`,
+                          color: il.label.color,
+                          border: `1px solid ${il.label.color}40`,
+                        }}
+                      >
+                        {il.label.name}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="text-[11px] text-[#8b949e] mt-1">
+                    #{issue.number} opened on{" "}
+                    {new Date(issue.createdAt).toLocaleDateString()} by{" "}
+                    <span className="text-[#c9d1d9]">{issue.author?.username || "user"}</span>
+                  </div>
+                </div>
+
+                {/* Comment count */}
+                {issue.comments?.length > 0 && (
+                  <Link
+                    href={`/${owner}/${repo}/issues/${issue.number}`}
+                    className="flex items-center gap-1 text-[11px] text-[#8b949e] hover:text-[#58a6ff] shrink-0"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    {issue.comments.length}
+                  </Link>
+                )}
               </div>
             </div>
           ))
