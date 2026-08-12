@@ -11,21 +11,29 @@ export async function GET() {
     }
 
     const userId = (session.user as any).id;
-    const user = await db.user.findUnique({ where: { id: userId } });
+    
+    // Look up token from Account table or User table
+    const account = await db.account.findFirst({
+      where: { userId, provider: "github" },
+    });
 
-    if (!user || !user.githubToken) {
+    const user = await db.user.findUnique({ where: { id: userId } });
+    const githubToken = account?.access_token || user?.githubToken;
+
+    if (!githubToken) {
       return NextResponse.json({ repos: [] });
     }
 
     // Fetch user's repositories from GitHub API
-    const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
+    const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=50&affiliation=owner,collaborator", {
       headers: {
-        Authorization: `Bearer ${user.githubToken}`,
+        Authorization: `Bearer ${githubToken}`,
         "User-Agent": "Hithub-App",
       },
     });
 
     if (!res.ok) {
+      console.warn("GitHub API fetch repos failed:", res.status, res.statusText);
       return NextResponse.json({ repos: [] });
     }
 
