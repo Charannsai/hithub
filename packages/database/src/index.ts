@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/client";
 
 declare global {
   var cachedPrisma: PrismaClient | undefined;
@@ -10,4 +10,4 @@ if (process.env.NODE_ENV !== "production") {
   globalThis.cachedPrisma = db;
 }
 
-export * from "@prisma/client";
+export * from "./generated/client";

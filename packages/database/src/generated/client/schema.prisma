@@ -1,0 +1,442 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  avatarUrl     String?
+  bio           String?
+  location      String?
+  website       String?
+  company       String?
+  passwordHash  String?
+  githubId      String?   @unique
+  githubToken   String?
+  role          String    @default("USER") // USER, ADMIN, ORGANIZATION_OWNER
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  sshKeys         SSHKey[]
+  accessTokens    AccessToken[]
+  ownedRepos      Repository[]         @relation("OwnerRepos")
+  orgMemberships  OrganizationMember[]
+  repoMemberships RepositoryMember[]
+  issuesCreated   Issue[]              @relation("IssueAuthor")
+  issuesAssigned  Issue[]              @relation("IssueAssignee")
+  prsCreated      PullRequest[]        @relation("PRAuthor")
+  comments        IssueComment[]
+  prReviews       PullRequestReview[]
+  discussions     Discussion[]
+  notifications   Notification[]
+  auditEvents     AuditEvent[]
+  agentRuns       AgentRun[]
+  stars           Star[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model SSHKey {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  fingerprint String   @unique
+  publicKey   String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AccessToken {
+  id        String    @id @default(uuid())
+  userId    String
+  name      String
+  tokenHash String    @unique
+  scopes    String // comma-separated scopes
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  displayName String?
+  description String?
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+
+  members OrganizationMember[]
+  teams   Team[]
+  repos   Repository[]
+}
+
+model OrganizationMember {
+  id           String       @id @default(uuid())
+  orgId        String
+  userId       String
+  role         String       @default("MEMBER") // OWNER, MEMBER, ADMIN
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+model Team {
+  id           String       @id @default(uuid())
+  orgId        String
+  name         String
+  description  String?
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model Repository {
+  id            String   @id @default(uuid())
+  name          String
+  ownerId       String
+  orgId         String?
+  description   String?
+  visibility    String   @default("PUBLIC") // PUBLIC, PRIVATE, INTERNAL
+  defaultBranch String   @default("main")
+  isArchived    Boolean  @default(false)
+  isTemplate    Boolean  @default(false)
+  starsCount    Int      @default(0)
+  forksCount    Int      @default(0)
+  diskPath      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner        User               @relation("OwnerRepos", fields: [ownerId], references: [id], onDelete: Cascade)
+  organization Organization?      @relation(fields: [orgId], references: [id])
+  members      RepositoryMember[]
+  issues       Issue[]
+  pullRequests PullRequest[]
+  discussions  Discussion[]
+  branches     BranchRule[]
+  releases     Release[]
+  workflows    Workflow[]
+  packages     Package[]
+  deployments  Deployment[]
+  secrets      Secret[]
+  webhooks     Webhook[]
+  stars        Star[]
+
+  @@unique([ownerId, name])
+}
+
+model Star {
+  id        String   @id @default(cuid())
+  userId    String
+  repoId    String
+  createdAt DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, repoId])
+}
+
+model RepositoryMember {
+  id         String     @id @default(uuid())
+  repoId     String
+  userId     String
+  role       String     @default("WRITE") // READ, WRITE, ADMIN
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, userId])
+}
+
+model BranchRule {
+  id                String     @id @default(uuid())
+  repoId            String
+  pattern           String // e.g. main, release/*
+  requireReview     Boolean    @default(true)
+  requiredReviews   Int        @default(1)
+  requireChecks     Boolean    @default(false)
+  restrictForcePush Boolean    @default(true)
+  repository        Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Issue {
+  id          String   @id @default(uuid())
+  repoId      String
+  number      Int
+  title       String
+  body        String?
+  state       String   @default("OPEN") // OPEN, CLOSED
+  authorId    String
+  assigneeId  String?
+  milestoneId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  repository Repository     @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  author     User           @relation("IssueAuthor", fields: [authorId], references: [id])
+  assignee   User?          @relation("IssueAssignee", fields: [assigneeId], references: [id])
+  milestone  Milestone?     @relation(fields: [milestoneId], references: [id])
+  comments   IssueComment[]
+  labels     IssueLabel[]
+
+  @@unique([repoId, number])
+}
+
+model IssueComment {
+  id        String   @id @default(uuid())
+  issueId   String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id])
+}
+
+model Label {
+  id          String       @id @default(uuid())
+  name        String
+  color       String // hex color e.g. #ff0000
+  description String?
+  issues      IssueLabel[]
+}
+
+model IssueLabel {
+  issueId String
+  labelId String
+  issue   Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, labelId])
+}
+
+model Milestone {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  issues      Issue[]
+}
+
+model PullRequest {
+  id           String   @id @default(uuid())
+  repoId       String
+  number       Int
+  title        String
+  body         String?
+  state        String   @default("OPEN") // OPEN, CLOSED, MERGED
+  sourceBranch String
+  targetBranch String
+  authorId     String
+  isDraft      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  repository Repository          @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  author     User                @relation("PRAuthor", fields: [authorId], references: [id])
+  reviews    PullRequestReview[]
+
+  @@unique([repoId, number])
+}
+
+model PullRequestReview {
+  id            String   @id @default(uuid())
+  pullRequestId String
+  reviewerId    String
+  state         String // APPROVED, CHANGES_REQUESTED, COMMENTED
+  body          String?
+  createdAt     DateTime @default(now())
+
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  reviewer    User        @relation(fields: [reviewerId], references: [id])
+}
+
+model Discussion {
+  id        String   @id @default(uuid())
+  repoId    String
+  authorId  String
+  title     String
+  body      String
+  category  String   @default("General") // Q&A, Ideas, Show and Tell, General
+  createdAt DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorId], references: [id])
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  title       String
+  description String?
+  items       ProjectItem[]
+  createdAt   DateTime      @default(now())
+}
+
+model ProjectItem {
+  id        String  @id @default(uuid())
+  projectId String
+  title     String
+  status    String  @default("Todo") // Todo, In Progress, Done
+  issueId   String?
+  prId      String?
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Release {
+  id           String   @id @default(uuid())
+  repoId       String
+  tagName      String
+  title        String
+  body         String?
+  isDraft      Boolean  @default(false)
+  isPrerelease Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Workflow {
+  id       String        @id @default(uuid())
+  repoId   String
+  name     String
+  filePath String // .hithub/workflows/ci.yml
+  runs     WorkflowRun[]
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model WorkflowRun {
+  id         String   @id @default(uuid())
+  workflowId String
+  commitSha  String
+  branch     String
+  status     String   @default("QUEUED") // QUEUED, IN_PROGRESS, SUCCESS, FAILURE, CANCELLED
+  logs       String?
+  createdAt  DateTime @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model Package {
+  id            String   @id @default(uuid())
+  repoId        String
+  name          String
+  type          String // npm, pypi, docker, cargo
+  version       String
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Deployment {
+  id          String   @id @default(uuid())
+  repoId      String
+  environment String // production, staging, preview
+  status      String // success, pending, failure
+  url         String?
+  createdAt   DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Secret {
+  id        String   @id @default(uuid())
+  repoId    String
+  name      String
+  valueEnc  String
+  createdAt DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Webhook {
+  id        String   @id @default(uuid())
+  repoId    String
+  url       String
+  secret    String?
+  events    String // push, pull_request, issue
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  repository Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String // repo.create, pr.merge, ssh.add
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model AgentRun {
+  id        String   @id @default(uuid())
+  userId    String
+  task      String
+  status    String   @default("IDLE") // IDLE, THINKING, EXECUTING, COMPLETED, FAILED
+  logs      String?
+  output    String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
