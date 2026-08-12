@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import simpleGit from "simple-git";
 
 const app = express();
@@ -34,22 +34,22 @@ app.post("/api/repos/init", async (req: Request, res: Response) => {
       // Create initial seed commit in temporary workdir
       const tempWorkDir = path.join(REPO_ROOT, owner, `_temp_${repoName}`);
       fs.mkdirSync(tempWorkDir, { recursive: true });
-      
+
       const tempGit = simpleGit(tempWorkDir);
       await tempGit.init();
       fs.writeFileSync(
         path.join(tempWorkDir, "README.md"),
-        `# ${repoName}\n\nWelcome to your new repository on Hithub! Self-hosted & AI native.\n`
+        `# ${repoName}\n\nWelcome to your new repository on Hithub! Self-hosted & open-source.\n`
       );
       fs.writeFileSync(
         path.join(tempWorkDir, ".gitignore"),
         "node_modules/\n.env\ndist/\n"
       );
-      
+
       await tempGit.add(".");
       await tempGit.commit("Initial commit");
       await tempGit.addRemote("origin", repoPath);
-      await tempGit.push("origin", "master", ["-u"]);
+      await tempGit.push("origin", "main", ["-u"]);
 
       // Cleanup temp workdir
       fs.rmSync(tempWorkDir, { recursive: true, force: true });
@@ -76,7 +76,7 @@ app.get("/api/repos/:owner/:repoName/tree", async (req: Request, res: Response) 
 
     const git = simpleGit(repoPath);
     const treeOutput = await git.raw(["ls-tree", "-l", ref, subpath ? `${subpath}/` : ""]);
-    
+
     const entries = treeOutput
       .split("\n")
       .filter(Boolean)
@@ -128,7 +128,7 @@ app.get("/api/repos/:owner/:repoName/commits", async (req: Request, res: Respons
   try {
     const { owner, repoName } = req.params;
     const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
-    
+
     if (!fs.existsSync(repoPath)) {
       return res.json({ commits: [] });
     }
@@ -142,7 +142,26 @@ app.get("/api/repos/:owner/:repoName/commits", async (req: Request, res: Respons
   }
 });
 
-// 5. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
+// 5. Read Branches
+app.get("/api/repos/:owner/:repoName/branches", async (req: Request, res: Response) => {
+  try {
+    const { owner, repoName } = req.params;
+    const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+
+    if (!fs.existsSync(repoPath)) {
+      return res.json({ branches: [] });
+    }
+
+    const git = simpleGit(repoPath);
+    const branchSummary = await git.branch();
+
+    res.json({ branches: Object.keys(branchSummary.branches) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Git Smart HTTP Handlers (info/refs, git-upload-pack, git-receive-pack)
 app.all("/:owner/:repoName.git/info/refs", (req: Request, res: Response) => {
   const service = req.query.service as string;
   if (service !== "git-upload-pack" && service !== "git-receive-pack") {
@@ -151,6 +170,10 @@ app.all("/:owner/:repoName.git/info/refs", (req: Request, res: Response) => {
 
   const { owner, repoName } = req.params;
   const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+
+  if (!fs.existsSync(repoPath)) {
+    return res.status(404).send("Repository not found");
+  }
 
   res.setHeader("Content-Type", `application/x-${service}-advertisement`);
   res.setHeader("Cache-Control", "no-cache");
@@ -169,6 +192,25 @@ app.all("/:owner/:repoName.git/info/refs", (req: Request, res: Response) => {
     res.write(stdout);
     res.end();
   });
+});
+
+app.post("/:owner/:repoName.git/:service", (req: Request, res: Response) => {
+  const { service, owner, repoName } = req.params;
+  if (service !== "git-upload-pack" && service !== "git-receive-pack") {
+    return res.status(400).send("Invalid service");
+  }
+
+  const repoPath = path.join(REPO_ROOT, owner, `${repoName}.git`);
+  if (!fs.existsSync(repoPath)) {
+    return res.status(404).send("Repository not found");
+  }
+
+  res.setHeader("Content-Type", `application/x-${service}-result`);
+  res.setHeader("Cache-Control", "no-cache");
+
+  const child = spawn(service, ["--stateless-rpc", repoPath]);
+  req.pipe(child.stdin);
+  child.stdout.pipe(res);
 });
 
 app.listen(PORT, () => {
