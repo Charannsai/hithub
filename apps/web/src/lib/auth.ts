@@ -15,7 +15,6 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       if (account?.provider === "github" && profile) {
         const ghProfile = profile as any;
-        // Update or set GitHub-specific fields on the user
         try {
           await db.user.update({
             where: { id: user.id },
@@ -31,18 +30,15 @@ export const authOptions: NextAuthOptions = {
             },
           });
         } catch (e) {
-          // User may not exist yet on first sign-in (adapter creates it)
-          // We handle it in the session callback instead
+          // If user record is not created yet by adapter, adapter will create it and trigger createUser event
         }
       }
       return true;
     },
     async session({ session, user }) {
       if (session.user) {
-        // Attach user ID and username to the session
         (session.user as any).id = user.id;
 
-        // Fetch full user data from our DB
         const dbUser = await db.user.findUnique({
           where: { id: user.id },
           select: {
@@ -54,8 +50,8 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (dbUser) {
-          (session.user as any).username = dbUser.username;
-          (session.user as any).avatarUrl = dbUser.avatarUrl;
+          (session.user as any).username = dbUser.username || session.user.name || "user";
+          (session.user as any).avatarUrl = dbUser.avatarUrl || session.user.image;
           (session.user as any).bio = dbUser.bio;
         }
       }
@@ -67,48 +63,13 @@ export const authOptions: NextAuthOptions = {
   },
   events: {
     async createUser({ user }) {
-      // When a new user is created by the adapter, set username from their profile
-      // The adapter creates the user with email/name/image but not username
-      const account = await db.account.findFirst({
-        where: { userId: user.id },
-      });
-
-      if (account) {
-        // Fetch GitHub profile to get login
-        try {
-          const res = await fetch("https://api.github.com/user", {
-            headers: {
-              Authorization: `Bearer ${account.access_token}`,
-              "User-Agent": "Hithub",
-            },
-          });
-          if (res.ok) {
-            const ghProfile = await res.json();
-            await db.user.update({
-              where: { id: user.id },
-              data: {
-                username: ghProfile.login,
-                avatarUrl: ghProfile.avatar_url,
-                bio: ghProfile.bio || null,
-                location: ghProfile.location || null,
-                company: ghProfile.company || null,
-                website: ghProfile.blog || null,
-                githubId: String(ghProfile.id),
-                githubToken: account.access_token,
-              },
-            });
-          }
-        } catch (e) {
-          // Fallback: use email prefix as username
-          if (user.email) {
-            await db.user.update({
-              where: { id: user.id },
-              data: {
-                username: user.email.split("@")[0],
-              },
-            });
-          }
-        }
+      // Ensure username is populated if null
+      if (!user.username) {
+        const fallbackUsername = user.email ? user.email.split("@")[0] : `user_${user.id.substring(0, 8)}`;
+        await db.user.update({
+          where: { id: user.id },
+          data: { username: fallbackUsername },
+        });
       }
     },
   },
