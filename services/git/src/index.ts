@@ -52,6 +52,9 @@ app.post("/api/repos/init", async (req: Request, res: Response) => {
       await tempGit.addRemote("origin", repoPath);
       await tempGit.push("origin", "main", ["-u"]);
 
+      // Point HEAD in bare repo to main
+      await git.raw(["symbolic-ref", "HEAD", "refs/heads/main"]);
+
       // Cleanup temp workdir
       fs.rmSync(tempWorkDir, { recursive: true, force: true });
     }
@@ -112,7 +115,11 @@ app.get("/api/repos/:owner/:repoName/tree", async (req: Request, res: Response) 
     }
 
     const git = simpleGit(repoPath);
-    const treeOutput = await git.raw(["ls-tree", "-l", ref, subpath ? `${subpath}/` : ""]);
+    const args = ["ls-tree", "-l", ref];
+    if (subpath) {
+      args.push(`${subpath}/`);
+    }
+    const treeOutput = await git.raw(args);
 
     const entries = treeOutput
       .split("\n")
