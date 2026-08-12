@@ -48,6 +48,7 @@ app.post("/api/repos/init", async (req: Request, res: Response) => {
 
       await tempGit.add(".");
       await tempGit.commit("Initial commit");
+      await tempGit.branch(["-M", "main"]);
       await tempGit.addRemote("origin", repoPath);
       await tempGit.push("origin", "main", ["-u"]);
 
