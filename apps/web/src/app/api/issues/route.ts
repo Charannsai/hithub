@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@hithub/database";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
@@ -10,6 +12,7 @@ export async function GET(req: Request) {
       where: repoId ? { repoId } : undefined,
       include: {
         author: true,
+        labels: { include: { label: true } },
         comments: {
           include: { author: true },
         },
@@ -25,6 +28,12 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const userId = (session.user as any).id;
     const body = await req.json();
     const { repoId, title, body: issueBody } = body;
 
@@ -32,21 +41,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "repoId and title required" }, { status: 400 });
     }
 
-    const user = await db.user.findFirst({ where: { username: "octocat" } });
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const count = await db.issue.count({ where: { repoId } });
+    // Get next issue number for this repo
+    const lastIssue = await db.issue.findFirst({
+      where: { repoId },
+      orderBy: { number: "desc" },
+    });
+    const nextNumber = (lastIssue?.number || 0) + 1;
 
     const issue = await db.issue.create({
       data: {
         repoId,
-        number: count + 1,
+        number: nextNumber,
         title,
-        body: issueBody,
-        authorId: user.id,
+        body: issueBody || null,
+        authorId: userId,
       },
+      include: { author: true },
+    });
+
+    return NextResponse.json({ success: true, issue });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { issueId, state, title, body: issueBody, assigneeId } = body;
+
+    if (!issueId) {
+      return NextResponse.json({ error: "issueId required" }, { status: 400 });
+    }
+
+    const updateData: any = {};
+    if (state) updateData.state = state;
+    if (title) updateData.title = title;
+    if (issueBody !== undefined) updateData.body = issueBody;
+    if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
+
+    const issue = await db.issue.update({
+      where: { id: issueId },
+      data: updateData,
+      include: { author: true },
     });
 
     return NextResponse.json({ success: true, issue });

@@ -1,41 +1,73 @@
 import React from "react";
 import Link from "next/link";
 import { db } from "@hithub/database";
+import { getSession } from "@/lib/session";
 import {
   BookOpen,
   Plus,
   GitPullRequest,
   CircleDot,
-  CheckCircle2,
   Clock,
-  Sparkles,
-  DownloadCloud,
   Github,
-  Search,
   Star,
   GitFork,
-  Bot,
+  Globe,
+  Lock,
 } from "lucide-react";
 
 export const revalidate = 0;
 
 export default async function HomePage() {
-  // Query real repositories from SQLite
+  const session = await getSession();
+  const user = session?.user as any;
+  const isLoggedIn = !!user;
+
   let repositories: any[] = [];
   let recentIssues: any[] = [];
+  let recentPRs: any[] = [];
 
   try {
-    repositories = await db.repository.findMany({
-      include: { owner: true },
-      orderBy: { updatedAt: "desc" },
-      take: 8,
-    });
+    if (isLoggedIn && user?.id) {
+      // Show the logged-in user's repos
+      repositories = await db.repository.findMany({
+        where: { ownerId: user.id },
+        include: { owner: true },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      });
 
-    recentIssues = await db.issue.findMany({
-      include: { author: true, repository: true },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    });
+      // Recent issues in user's repos
+      const repoIds = repositories.map((r: any) => r.id);
+      if (repoIds.length > 0) {
+        recentIssues = await db.issue.findMany({
+          where: { repoId: { in: repoIds } },
+          include: { author: true, repository: { include: { owner: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        });
+
+        recentPRs = await db.pullRequest.findMany({
+          where: { repoId: { in: repoIds } },
+          include: { author: true, repository: { include: { owner: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        });
+      }
+    } else {
+      // Show all public repos for unauthenticated users
+      repositories = await db.repository.findMany({
+        where: { visibility: "PUBLIC" },
+        include: { owner: true },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      });
+
+      recentIssues = await db.issue.findMany({
+        include: { author: true, repository: { include: { owner: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      });
+    }
   } catch (e) {
     // Database query safety fallback
   }
@@ -43,58 +75,85 @@ export default async function HomePage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* Left Sidebar: User & Repositories */}
-      <div className="lg:col-span-4 space-y-6">
+      <div className="lg:col-span-3 space-y-5">
         {/* User Badge */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 space-y-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-[#30363d] text-white font-bold text-sm flex items-center justify-center border border-[#8b949e]/30">
-              OC
-            </div>
-            <div>
-              <h2 className="font-bold text-white text-sm">octocat</h2>
-              <p className="text-xs text-[#8b949e]">The Hithub Octocat</p>
+        {isLoggedIn ? (
+          <div className="space-y-4">
+            <div className="flex items-center space-x-3">
+              {user.avatarUrl || user.image ? (
+                <img
+                  src={user.avatarUrl || user.image}
+                  alt={user.username}
+                  className="w-8 h-8 rounded-full border border-[#30363d]"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#30363d] text-white font-bold text-xs flex items-center justify-center">
+                  {(user.username || "U").substring(0, 2).toUpperCase()}
+                </div>
+              )}
+              <span className="font-semibold text-sm text-white">{user.username || user.name}</span>
             </div>
           </div>
-          <p className="text-xs text-[#c9d1d9] leading-relaxed">
-            Open-source GitHub clone platform. 100% self-hosted & AI-native.
-          </p>
-        </div>
-
-        {/* Repositories Sidebar */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded-md p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-xs text-[#f0f6fc]">
-              Top Repositories
-            </h3>
+        ) : (
+          <div className="bg-[#161b22] border border-[#30363d] rounded-md p-5 space-y-3 text-center">
+            <Github className="w-8 h-8 text-white fill-white mx-auto" />
+            <h2 className="font-bold text-sm text-white">Welcome to Hithub</h2>
+            <p className="text-xs text-[#8b949e]">
+              Sign in with GitHub to create repositories, open issues, and contribute.
+            </p>
             <Link
-              href="/import"
-              className="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold px-2.5 py-1 rounded transition-colors flex items-center gap-1 shadow-sm"
+              href="/auth/signin"
+              className="inline-flex items-center gap-2 bg-[#238636] hover:bg-[#2ea043] text-white font-semibold text-xs px-4 py-2 rounded-md transition-all shadow-sm"
             >
-              <Plus className="w-3 h-3" />
-              New
+              <Github className="w-4 h-4 fill-white" />
+              Sign in with GitHub
             </Link>
           </div>
+        )}
 
-          <div className="space-y-1.5">
+        {/* Repositories Sidebar */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-xs text-[#f0f6fc]">
+              {isLoggedIn ? "Your repositories" : "Explore repositories"}
+            </h3>
+            {isLoggedIn && (
+              <Link
+                href="/new"
+                className="bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold px-2.5 py-1 rounded transition-colors flex items-center gap-1 shadow-sm"
+              >
+                <Plus className="w-3 h-3" />
+                New
+              </Link>
+            )}
+          </div>
+
+          <div className="space-y-0.5">
             {repositories.length === 0 ? (
-              <p className="text-xs text-[#8b949e] italic">No repositories found in SQLite database.</p>
+              <p className="text-xs text-[#8b949e] py-4">
+                {isLoggedIn
+                  ? "You don't have any repositories yet."
+                  : "No public repositories found."}
+              </p>
             ) : (
-              repositories.map((repo) => (
+              repositories.map((repo: any) => (
                 <Link
                   key={repo.id}
-                  href={`/${repo.owner?.username || "octocat"}/${repo.name}`}
-                  className="block p-2 rounded-md hover:bg-[#21262d] transition-colors group border border-transparent hover:border-[#30363d]"
+                  href={`/${repo.owner?.username || "user"}/${repo.name}`}
+                  className="block py-2 px-2 rounded-md hover:bg-[#21262d] transition-colors group"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-[#58a6ff] group-hover:underline">
-                      {repo.owner?.username || "octocat"}/{repo.name}
-                    </span>
-                    <span className="text-[10px] bg-[#21262d] text-[#8b949e] border border-[#30363d] px-1.5 py-0.5 rounded font-mono">
-                      {repo.visibility}
+                  <div className="flex items-center gap-2">
+                    {repo.visibility === "PRIVATE" ? (
+                      <Lock className="w-3 h-3 text-[#8b949e] shrink-0" />
+                    ) : (
+                      <BookOpen className="w-3 h-3 text-[#8b949e] shrink-0" />
+                    )}
+                    <span className="font-medium text-xs text-[#58a6ff] group-hover:underline truncate">
+                      {repo.owner?.username || "user"}/{repo.name}
                     </span>
                   </div>
                   {repo.description && (
-                    <p className="text-[11px] text-[#8b949e] mt-1 line-clamp-1">
+                    <p className="text-[11px] text-[#8b949e] mt-0.5 ml-5 line-clamp-1">
                       {repo.description}
                     </p>
                   )}
@@ -106,75 +165,169 @@ export default async function HomePage() {
       </div>
 
       {/* Main Feed Column */}
-      <div className="lg:col-span-8 space-y-6">
-        {/* GitHub Clone Announcement Banner */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded-md p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
-              <Github className="w-4 h-4 text-white fill-white" />
-              HITHUB PLATFORM
-            </span>
-            <span className="text-[11px] bg-[#21262d] text-[#58a6ff] border border-[#30363d] px-2 py-0.5 rounded font-mono font-semibold">
-              100% Dynamic Engine
-            </span>
+      <div className="lg:col-span-9 space-y-6">
+        {/* Welcome Banner (when not logged in) */}
+        {!isLoggedIn && (
+          <div className="bg-[#161b22] border border-[#30363d] rounded-md p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
+                <Github className="w-4 h-4 text-white fill-white" />
+                HITHUB PLATFORM
+              </span>
+              <span className="text-[11px] bg-[#21262d] text-[#58a6ff] border border-[#30363d] px-2 py-0.5 rounded font-mono font-semibold">
+                Open Source
+              </span>
+            </div>
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              The open-source GitHub alternative you can self-host.
+            </h1>
+            <p className="text-xs text-[#c9d1d9] leading-relaxed">
+              Hithub provides Git repository hosting, side-by-side PR code reviews, issue tracking,
+              CI/CD pipelines, and AI-powered coding agents — all running locally.
+            </p>
+            <div className="flex items-center gap-3 pt-2">
+              <Link
+                href="/auth/signin"
+                className="bg-[#238636] hover:bg-[#2ea043] text-white font-semibold text-xs px-4 py-2 rounded-md transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <Github className="w-3.5 h-3.5 fill-white" />
+                Get Started
+              </Link>
+              <Link
+                href="/import"
+                className="bg-[#21262d] hover:bg-[#30363d] text-white text-xs font-semibold px-4 py-2 rounded-md border border-[#30363d] transition-colors flex items-center gap-1.5"
+              >
+                Import from GitHub
+              </Link>
+            </div>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">
-            "We rebuilt GitHub. Then we open-sourced it."
-          </h1>
-          <p className="text-xs text-[#c9d1d9] leading-relaxed">
-            Hithub provides full GitHub feature parity: Git smart HTTP protocol repository hosting, side-by-side PR code reviews, issue tracking, Hithub Actions CI/CD, security scanning, and autonomous AI agents.
-          </p>
-          <div className="flex items-center gap-3 pt-2">
-            <Link
-              href="/octocat/hithub-core"
-              className="bg-[#238636] hover:bg-[#2ea043] text-white font-semibold text-xs px-4 py-2 rounded-md transition-all shadow-sm flex items-center gap-1.5"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Explore Hithub Core
-            </Link>
-            <Link
-              href="/import"
-              className="bg-[#21262d] hover:bg-[#30363d] text-white text-xs font-semibold px-4 py-2 rounded-md border border-[#30363d] transition-colors flex items-center gap-1.5"
-            >
-              <DownloadCloud className="w-3.5 h-3.5 text-[#3fb950]" />
-              GitHub Importer
-            </Link>
-          </div>
-        </div>
+        )}
 
-        {/* Real-time Activity Timeline */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded-md p-6 space-y-4">
+        {/* Activity Timeline */}
+        <div className="bg-[#161b22] border border-[#30363d] rounded-md p-5 space-y-4">
           <h3 className="text-xs font-bold text-[#f0f6fc] uppercase tracking-wider flex items-center gap-2 border-b border-[#30363d] pb-3">
             <Clock className="w-4 h-4 text-[#8b949e]" />
-            Recent Activity & Issues
+            {isLoggedIn ? "Your Activity" : "Recent Activity"}
           </h3>
 
           <div className="space-y-3 text-xs">
-            {recentIssues.length === 0 ? (
-              <p className="text-[#8b949e] text-xs">No active issues found in database.</p>
+            {recentIssues.length === 0 && recentPRs.length === 0 ? (
+              <p className="text-[#8b949e] text-xs py-4 text-center">
+                {isLoggedIn
+                  ? "No activity yet. Create a repository to get started!"
+                  : "No recent activity to show."}
+              </p>
             ) : (
-              recentIssues.map((issue) => (
-                <div key={issue.id} className="flex gap-3 items-start p-3 bg-[#0d1117] border border-[#30363d] rounded-md">
-                  <CircleDot className="w-4 h-4 text-[#3fb950] shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="text-[#c9d1d9]">
-                      <span className="font-bold text-white">{issue.author?.username || "octocat"}</span> opened issue{" "}
-                      <Link
-                        href={`/${issue.repository?.ownerId || "octocat"}/${issue.repository?.name || "hithub-core"}/issues`}
-                        className="font-bold text-[#58a6ff] hover:underline"
-                      >
-                        #{issue.number} {issue.title}
-                      </Link>
-                    </p>
-                    <p className="text-[11px] text-[#8b949e] font-mono">
-                      State: {issue.state} • {new Date(issue.createdAt).toLocaleString()}
-                    </p>
+              <>
+                {recentIssues.map((issue: any) => (
+                  <div
+                    key={issue.id}
+                    className="flex gap-3 items-start p-3 bg-[#0d1117] border border-[#30363d] rounded-md"
+                  >
+                    <CircleDot
+                      className={`w-4 h-4 shrink-0 mt-0.5 ${
+                        issue.state === "OPEN" ? "text-[#3fb950]" : "text-[#a371f7]"
+                      }`}
+                    />
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[#c9d1d9]">
+                        <span className="font-bold text-white">
+                          {issue.author?.username || "user"}
+                        </span>{" "}
+                        opened issue{" "}
+                        <Link
+                          href={`/${issue.repository?.owner?.username || "user"}/${
+                            issue.repository?.name
+                          }/issues`}
+                          className="font-bold text-[#58a6ff] hover:underline"
+                        >
+                          #{issue.number} {issue.title}
+                        </Link>
+                      </p>
+                      <p className="text-[11px] text-[#8b949e] font-mono">
+                        {issue.repository?.owner?.username}/{issue.repository?.name} ·{" "}
+                        {new Date(issue.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+
+                {recentPRs.map((pr: any) => (
+                  <div
+                    key={pr.id}
+                    className="flex gap-3 items-start p-3 bg-[#0d1117] border border-[#30363d] rounded-md"
+                  >
+                    <GitPullRequest className="w-4 h-4 text-[#3fb950] shrink-0 mt-0.5" />
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[#c9d1d9]">
+                        <span className="font-bold text-white">
+                          {pr.author?.username || "user"}
+                        </span>{" "}
+                        opened PR{" "}
+                        <Link
+                          href={`/${pr.repository?.owner?.username || "user"}/${
+                            pr.repository?.name
+                          }/pulls`}
+                          className="font-bold text-[#58a6ff] hover:underline"
+                        >
+                          #{pr.number} {pr.title}
+                        </Link>
+                      </p>
+                      <p className="text-[11px] text-[#8b949e] font-mono">
+                        {pr.sourceBranch} → {pr.targetBranch} ·{" "}
+                        {new Date(pr.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         </div>
+
+        {/* Explore Section for all users */}
+        {repositories.length > 0 && !isLoggedIn && (
+          <div className="bg-[#161b22] border border-[#30363d] rounded-md p-5 space-y-4">
+            <h3 className="text-xs font-bold text-[#f0f6fc] uppercase tracking-wider flex items-center gap-2 border-b border-[#30363d] pb-3">
+              <Globe className="w-4 h-4 text-[#8b949e]" />
+              Explore Repositories
+            </h3>
+
+            <div className="space-y-3">
+              {repositories.map((repo: any) => (
+                <Link
+                  key={repo.id}
+                  href={`/${repo.owner?.username || "user"}/${repo.name}`}
+                  className="block p-3 bg-[#0d1117] border border-[#30363d] rounded-md hover:border-[#8b949e]/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-[#58a6ff] hover:underline">
+                      {repo.owner?.username || "user"}/{repo.name}
+                    </span>
+                    <span className="text-[10px] bg-[#21262d] text-[#8b949e] border border-[#30363d] px-1.5 py-0.5 rounded font-mono">
+                      {repo.visibility}
+                    </span>
+                  </div>
+                  {repo.description && (
+                    <p className="text-[11px] text-[#8b949e] mt-1 line-clamp-2">
+                      {repo.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-4 mt-2 text-[11px] text-[#8b949e]">
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3 h-3" />
+                      {repo.starsCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <GitFork className="w-3 h-3" />
+                      {repo.forksCount}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
