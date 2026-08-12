@@ -6,11 +6,10 @@ import {
   Folder,
   FileText,
   History,
-  Code2,
   ChevronDown,
-  Download,
   FileCode,
 } from "lucide-react";
+import CloneDropdown from "./CloneDropdown";
 
 export const revalidate = 0;
 
@@ -110,52 +109,7 @@ export default async function RepoBrowserPage({
         </div>
 
         {/* Code / Clone Dropdown */}
-        <div className="relative group">
-          <button className="bg-[#238636] hover:bg-[#2ea043] text-white font-semibold text-xs px-3.5 py-1.5 rounded-md flex items-center gap-1.5 shadow-sm transition-all">
-            <Code2 className="w-3.5 h-3.5" />
-            <span>Code</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
-
-          {/* Clone Popover */}
-          <div className="absolute right-0 top-full mt-1.5 w-80 bg-[#161b22] border border-[#30363d] rounded-md p-4 shadow-2xl hidden group-hover:block z-30 space-y-3">
-            <div className="text-xs font-bold text-white border-b border-[#30363d] pb-2 flex items-center justify-between">
-              <span>Clone Repository</span>
-              <span className="text-[10px] bg-[#21262d] text-[#58a6ff] border border-[#30363d] px-1.5 py-0.5 rounded font-mono">
-                HTTPS
-              </span>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-[#8b949e] font-mono">Clone with Git HTTP:</label>
-              <div className="flex items-center bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-1 text-xs text-[#58a6ff] font-mono">
-                <input
-                  type="text"
-                  readOnly
-                  value={`http://localhost:8080/${owner}/${repo}.git`}
-                  className="bg-transparent w-full focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-[#8b949e] font-mono">Hithub CLI:</label>
-              <div className="bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-1 text-xs text-[#c9d1d9] font-mono">
-                hithub repo clone {owner}/{repo}
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-[#30363d]">
-              <a
-                href={`http://localhost:8080/api/repos/${owner}/${repo}/zip`}
-                className="text-xs text-[#c9d1d9] hover:text-[#58a6ff] flex items-center gap-2 font-medium"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Download ZIP
-              </a>
-            </div>
-          </div>
-        </div>
+        <CloneDropdown owner={owner} repo={repo} />
       </div>
 
       {isEmpty ? (
@@ -229,23 +183,33 @@ export default async function RepoBrowserPage({
 
             {/* Directory Items */}
             <div className="divide-y divide-[#30363d]">
-              {fileList.map((file) => (
-                <div
-                  key={file.name}
-                  className="px-4 py-2 flex items-center hover:bg-[#21262d]/50 transition-colors"
-                >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    {file.type === "dir" ? (
-                      <Folder className="w-4 h-4 text-[#58a6ff] shrink-0 fill-[#58a6ff]/20" />
-                    ) : (
-                      <FileText className="w-4 h-4 text-[#8b949e] shrink-0" />
-                    )}
-                    <span className="font-medium text-[#c9d1d9] hover:text-[#58a6ff] hover:underline cursor-pointer truncate">
-                      {file.name}
-                    </span>
+              {fileList.map((file) => {
+                const itemHref =
+                  file.type === "dir"
+                    ? `/${owner}/${repo}/tree/${file.name}`
+                    : `/${owner}/${repo}/blob/${file.name}`;
+
+                return (
+                  <div
+                    key={file.name}
+                    className="px-4 py-2 flex items-center hover:bg-[#21262d]/50 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      {file.type === "dir" ? (
+                        <Folder className="w-4 h-4 text-[#58a6ff] shrink-0 fill-[#58a6ff]/20" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-[#8b949e] shrink-0" />
+                      )}
+                      <Link
+                        href={itemHref}
+                        className="font-medium text-[#c9d1d9] hover:text-[#58a6ff] hover:underline truncate"
+                      >
+                        {file.name}
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
