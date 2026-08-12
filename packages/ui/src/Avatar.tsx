@@ -6,9 +6,9 @@ export const Avatar: React.FC<{
   size?: "sm" | "md" | "lg";
 }> = ({ src, alt, size = "md" }) => {
   const sizes = {
-    sm: "w-6 h-6 text-xs",
-    md: "w-9 h-9 text-sm",
-    lg: "w-12 h-12 text-base",
+    sm: "w-5 h-5 text-[10px]",
+    md: "w-8 h-8 text-xs",
+    lg: "w-10 h-10 text-sm",
   };
 
   const initials = alt.substring(0, 2).toUpperCase();
@@ -18,14 +18,14 @@ export const Avatar: React.FC<{
       <img
         src={src}
         alt={alt}
-        className={`${sizes[size]} rounded-full object-cover border border-zinc-700/60 shadow-sm`}
+        className={`${sizes[size]} rounded-full object-cover border border-zinc-800 shadow-sm`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizes[size]} rounded-full bg-emerald-700/80 text-white flex items-center justify-center font-bold border border-emerald-500/30 shadow-sm`}
+      className={`${sizes[size]} rounded-full bg-zinc-800 text-zinc-200 flex items-center justify-center font-bold border border-zinc-700 shadow-sm`}
     >
       {initials}
     </div>
