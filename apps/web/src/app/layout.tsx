@@ -13,12 +13,15 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex flex-col antialiased selection:bg-[#58a6ff] selection:text-white">
+      <body
+        className="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex flex-col antialiased selection:bg-[#58a6ff] selection:text-white"
+        suppressHydrationWarning
+      >
         <Providers>
           <Header />
 

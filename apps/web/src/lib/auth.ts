@@ -4,8 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@hithub/database";
 
 export const authOptions: NextAuthOptions = {
-  // @ts-ignore — adapter type mismatch between @auth/prisma-adapter and next-auth is cosmetic
-  adapter: PrismaAdapter(db),
+  adapter: PrismaAdapter(db as any),
   providers: [
     GithubProvider({
       clientId: (process.env.GITHUB_CLIENT_ID || "").trim(),
